@@ -1,0 +1,18 @@
+# environement folder
+.env/
+venv/
+.venv/
+
+#simulation folder
+
+simulation/
+
+__pycache__/
+*.pyc 
+*.npy
+
+
+model_training/results/
+
+
+model_training/training_times.txt   
