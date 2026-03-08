@@ -31,6 +31,17 @@ This folder contains training (`main_train.py`) and evaluation (`eval.py`) for *
 | `-scaler` | Normalization: `linear` or `max` | `linear` |
 | `-n_epochs` | Max training epochs | `25` |
 | `-batch_size` / `-bs` | Batch size | `8` |
+| `-resume` | Path to a `.ckpt` file to resume training (restores model, optimizer, epoch) | `path/to/epoch=4-loss=0.32.ckpt` |
+
+### Resuming training from a checkpoint
+
+To continue training from a saved checkpoint (e.g. after interruption or to train for more epochs), pass the path to a PyTorch Lightning `.ckpt` file with **`-resume**:
+
+```bash
+python main_train.py mes_debug_python ... -resume "path/to/pl_checkpoints/epoch=4-train_loss=0.32.ckpt" -n_epochs 50
+```
+
+Use the same data/model arguments as the original run; the checkpoint restores model weights, optimizer state, and epoch counter. New checkpoints and the best model will be written to the **current run directory** (determined by `-results_path`, `simu_name`, and the run subfolder). To resume into the same run folder, use the same `-results_path` and other args so that `results_path` matches the directory that contains the checkpoint.
 
 ### Where outputs are saved
 

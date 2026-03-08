@@ -143,7 +143,13 @@ parser.add_argument(
     type=str,
     help="name of the subfolder in which to save results",
 )
-
+parser.add_argument(
+    "-resume",
+    type=str,
+    default=None,
+    metavar="PATH",
+    help="Path to a saved checkpoint (.ckpt) to resume training from (optimizer, epoch, and model state are restored).",
+)
 
 args = parser.parse_args()
 
@@ -452,8 +458,15 @@ trainer = pl.Trainer(
 print(
     f"<<<<<<<<<<<<<<<<<<<<<<<<<<< training model {args.model.upper()} >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 )
+if args.resume:
+    print(f"Resuming from checkpoint: {args.resume}")
 start_t = time.time()
-trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+trainer.fit(
+    model,
+    train_dataloaders=train_dataloader,
+    val_dataloaders=val_dataloader,
+    ckpt_path=args.resume,
+)
 end_t = time.time()
 #trainer.save_checkpoint(f"{results_path}/pl_checkpoints/{args.sfolder}.ckpt")
 
