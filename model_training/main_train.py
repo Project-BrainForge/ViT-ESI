@@ -480,7 +480,7 @@ best_model = net.load_from_checkpoint(
 torch.save(best_model.state_dict(), best_model_path)
 print(f"Training time : {(end_t-start_t)}")
 
-with open('./training_times.txt','a') as f :
+with open(f'{results_path}/training_times.txt','a') as f :
     f.write(
         f"model : {subfolder} - training time : {(end_t-start_t):0.3f}s\n"
     ) 
