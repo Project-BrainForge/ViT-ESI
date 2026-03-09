@@ -12,8 +12,6 @@ np.random.seed(0)
 home = os.path.expanduser('~')
 root_folder = os.path.join(home, "Documents", "Data")
 
-print(f"root_folder: {root_folder}")
-
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 
 ### @TODO : faire des subparser ou trouver une façon un peu mieux que ce gros parser là de passer les paramètres
@@ -69,6 +67,7 @@ parser.add_argument("-ds", "--dont_save", action="store_true", help = "Do not sa
 
 args = parser.parse_args()
 root_folder = args.root_folder
+print(f"root_folder: {root_folder}")
 anatomy_folder = args.anatomy_folder if args.anatomy_folder is not None else os.path.join(root_folder, "anatomy")
 ######################################################
 if args.orientation == "constrained" : 
