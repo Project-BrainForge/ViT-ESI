@@ -67,7 +67,7 @@ Replace `$PROJECT_ROOT` with your ViT-ESI directory (e.g. `/media/pasindu/DATA/f
 ### ViT-ESI (recommended)
 
 ```bash
-python main_train.py mes_debug_python \
+python model_training/main_train.py mes_debug_python \
   -results_path "$PROJECT_ROOT/model_training/results" \
   -simu_type sereega \
   -source_space fsav_994 \
