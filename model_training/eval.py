@@ -971,17 +971,25 @@ for k in val_ds.indices:
             other_sources = np.setdiff1d(act_src, patches[kk])
             t_eval_gt = torch.argmax(j[s, :].abs())
 
-            # find estimated seed in a neighboring area
+            # find estimated seed in a neighboring area (excluding competing sources)
             eval_zone = utl.get_patch(order=5, idx=s, neighbors=neighbors)
             eval_zone = np.setdiff1d(eval_zone, other_sources)
-            eval_zone = utl.get_patch(order=2, idx=s, neighbors=neighbors)
 
             s_hat = eval_zone[torch.argmax(j_hat[eval_zone, t_eval_gt].abs())]
-            t_eval_pred = torch.argmax(j_hat[s_hat, :].abs())
+
+            # Time error: use the global predicted peak time (independent of t_eval_gt)
+            # to avoid the circular bias introduced by selecting s_hat at t_eval_gt.
+            t_eval_pred = torch.argmax(j_hat.abs().max(dim=0)[0])
 
             le += torch.sqrt(((spos[s, :] - spos[s_hat, :]) ** 2).sum())
             te += np.abs(t_vec[t_eval_gt] - t_vec[t_eval_pred])
-            auc_val += met.auc_t(j_unscaled, j_hat, t_eval_gt, thresh=True, act_thresh=0.0)
+            # AUC: use the known patch membership (thresh=False, act_src=patches[kk])
+            # as the binary ground-truth labels.  Amplitude-threshold approaches
+            # (thresh=True) only label the high-amplitude core sources as active,
+            # which is trivially easy to discriminate and inflates AUC to ~99%.
+            # Using the full patch (all simulated active sources, including the
+            # lower-amplitude boundary ones) makes the metric properly demanding.
+            auc_val += met.auc_t(j_unscaled, j_hat, t_eval_gt, thresh=False, act_src=patches[kk])
 
             nmse_tmp = (
                 (

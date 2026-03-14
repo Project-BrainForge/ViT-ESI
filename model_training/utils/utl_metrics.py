@@ -122,8 +122,10 @@ def auc_t( x_gt, x_hat, t, thresh=False, act_thresh=0.1, act_src=None):
     # get index of active sources: 
     if thresh: 
         Sa = torch.argwhere( x_gt.abs() > act_thresh * x_gt.abs().max()  )
-    else: 
-        Sa = act_src
+    else:
+        # ensure act_src is integer-typed so PyTorch fancy-indexing works even
+        # when indices arrive as floats from MATLAB-loaded metadata.
+        Sa = np.array(act_src, dtype=np.int64)
     # binarize the ground truth data: active source = 1, other sources = 0
     bin_gt       = torch.zeros_like(x_gt, dtype=int)
     bin_gt[Sa] = 1
