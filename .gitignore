@@ -13,6 +13,7 @@ __pycache__/
 
 
 model_training/results/
+model_training/trained_models/
 
 
 model_training/training_times.txt   
