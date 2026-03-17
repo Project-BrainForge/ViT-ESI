@@ -296,6 +296,11 @@ def _load_module_weights(module, weights_path):
     else:
         base_state = checkpoint
 
+    # Get the model's expected keys
+    model_keys = set(module.state_dict().keys())
+    checkpoint_keys = set(base_state.keys())
+
+    # Try to find the best candidate by checking key overlap
     candidates = [base_state]
     for prefix in ("model.", "model.model."):
         stripped = _strip_prefix(base_state, prefix)
@@ -304,14 +309,40 @@ def _load_module_weights(module, weights_path):
     for prefix in ("model.",):
         candidates.append(_add_prefix(base_state, prefix))
 
-    last_error = None
+    # Find the candidate with the best key match
+    best_candidate = None
+    best_match_score = 0
+
     for cand in candidates:
+        cand_keys = set(cand.keys())
+        matching_keys = len(model_keys & cand_keys)
+        match_score = matching_keys / len(model_keys) if model_keys else 0
+
+        if match_score > best_match_score:
+            best_match_score = match_score
+            best_candidate = cand
+
+        # If we find a perfect match, use it immediately
+        if match_score == 1.0:
+            break
+
+    # Try loading with the best candidate
+    if best_candidate is not None:
         try:
-            module.load_state_dict(cand)
+            # Use strict=False to allow loading even if there are extra keys in checkpoint
+            missing_keys, unexpected_keys = module.load_state_dict(best_candidate, strict=False)
+
+            # Warn if there are missing required keys
+            if missing_keys:
+                print(f"Warning: Missing keys when loading {weights_path}: {missing_keys}")
+            if unexpected_keys:
+                print(f"Warning: Unexpected keys when loading {weights_path}: {unexpected_keys}")
+
             return
         except RuntimeError as err:
-            last_error = err
-    raise RuntimeError(f"Failed to load weights from {weights_path}: {last_error}")
+            raise RuntimeError(f"Failed to load weights from {weights_path}: {err}")
+
+    raise RuntimeError(f"Failed to load weights from {weights_path}: No suitable key mapping found")
 
 
 # Normalize methods early so we can decide whether MNE is needed.
@@ -1004,14 +1035,28 @@ for k in val_ds.indices:
         nmse_dict[method][c] = nmse
         auc_dict[method][c] = auc_val
 
-        psnr_dict[method][c] = psnr(
-            (j_unscaled / j_unscaled.abs().max()).numpy(),
-            (j_hat / j_hat.abs().max()).numpy(),
-            data_range=(
-                (j_unscaled / j_unscaled.abs().max()).min()
-                - (j_hat / j_hat.abs().max()).max()
-            ),
-        )
+        # Normalize both signals by their absolute max for fair comparison
+        j_norm = (j_unscaled / j_unscaled.abs().max()).numpy()
+        j_hat_norm = (j_hat / j_hat.abs().max()).numpy()
+
+        # data_range should be the full range of possible values
+        # (max of both signals - min of both signals)
+        data_range_val = max(j_norm.max(), j_hat_norm.max()) - min(j_norm.min(), j_hat_norm.min())
+
+        # Calculate PSNR, handling near-perfect predictions
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='divide by zero')
+            psnr_val = psnr(
+                j_norm,
+                j_hat_norm,
+                data_range=data_range_val,
+            )
+            # Cap infinite PSNR values at 100 dB (indicates near-perfect reconstruction)
+            if np.isinf(psnr_val):
+                psnr_val = 100.0
+
+        psnr_dict[method][c] = psnr_val
 
     c += 1
 
@@ -1063,12 +1108,12 @@ for method in methods:
             "noise db": f"{args.eeg_snr}",
             "mean nmse": f"{nmse_dict[method].mean()}",
             "std nmse": f"{nmse_dict[method].std()}",
-            "mean loc error": f"{loc_error_dict[method].mean()}",
-            "std loc error": f"{loc_error_dict[method].std()}",
+            "mean loc error": f"{loc_error_dict[method].mean()*1e3}",
+            "std loc error": f"{loc_error_dict[method].std()*1e3}",
             "mean auc": f"{auc_dict[method].mean()}",
             "std auc": f"{auc_dict[method].std()}",
-            "mean time error": f"{time_error_dict[method].mean()}",
-            "std time error": f"{time_error_dict[method].std()}",
+            "mean time error": f"{time_error_dict[method].mean()*1e3}",
+            "std time error": f"{time_error_dict[method].std()*1e3}",
             "mean psnr": f"{psnr_dict[method].mean()}",
             "std psnr": f"{psnr_dict[method].std()}",
         }
@@ -1115,9 +1160,9 @@ for method in methods:
         method_info = "none"
     my_values = {
         "nmse": np.squeeze(nmse_dict[method]),
-        "loc error": np.squeeze(loc_error_dict[method]),
+        "loc error": np.squeeze(loc_error_dict[method])*1e3,
         "auc": np.squeeze(auc_dict[method]),
-        "time error": np.squeeze(time_error_dict[method]),
+        "time error": np.squeeze(time_error_dict[method])*1e3,
         "psnr": np.squeeze(psnr_dict[method]),
     }
 
