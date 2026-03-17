@@ -114,7 +114,7 @@ class EsiDatasetds_new(Dataset):
                 self.md_dict[i] = json.load(f)
 
     def __len__(self):
-        return self.to_load
+        return min(self.to_load, len(self.ids))
 
     def __getitem__(self, index):
         ## convert index to id ##
