@@ -715,3 +715,67 @@ class EsiDatasetds(Dataset):
     def __len__(self):
         return self.eeg_data.shape[0]
 """
+
+
+class SimpleNMMDataset(Dataset):
+    """
+    Dataset to handle simple NMM data files (sample_XXXXX.mat format)
+    Each .mat file contains:
+        - eeg_data: (n_times, n_channels) EEG signals
+        - source_data: (n_times, n_sources) Source signals
+        - labels: (1, n_active_sources) Labels for active sources
+        - snr: (1, 1) Signal-to-noise ratio
+        - index: (1, 1) Sample index
+
+    Attributes:
+        data_folder: path to folder containing sample_XXXXX.mat files
+        norm: normalization type ('linear' or 'max-max')
+        file_list: list of mat file paths to load
+        max_eeg: maximum absolute value of each EEG sample
+        max_src: maximum absolute value of each source sample
+    """
+
+    def __init__(self, data_folder, to_load=None, norm="linear"):
+        super().__init__()
+        self.data_folder = data_folder
+        self.norm = norm
+
+        # Get all sample files
+        all_files = sorted([f for f in os.listdir(data_folder) if f.endswith('.mat')])
+
+        # Limit number of files to load if specified
+        if to_load is not None:
+            self.file_list = all_files[:to_load]
+        else:
+            self.file_list = all_files
+
+        dataset_len = len(self.file_list)
+        self.max_eeg = torch.zeros((dataset_len, 1))
+        self.max_src = torch.zeros((dataset_len, 1))
+
+    def __len__(self):
+        return len(self.file_list)
+
+    def __getitem__(self, index):
+        # Load mat file
+        mat_path = os.path.join(self.data_folder, self.file_list[index])
+        data = loadmat(mat_path)
+
+        # Extract data - shape is (n_times, n_channels/sources)
+        eeg_data = torch.from_numpy(data['eeg_data'].astype(np.float32))
+        src_data = torch.from_numpy(data['source_data'].astype(np.float32))
+
+        # Normalize data
+        if self.norm == "max-max":
+            self.max_eeg[index] = eeg_data.abs().max()
+            self.max_src[index] = src_data.abs().max()
+            eeg_data = eeg_data / eeg_data.abs().max()
+            src_data = src_data / src_data.abs().max()
+        else:  # linear normalization
+            self.max_eeg[index] = eeg_data.abs().max()
+            self.max_src[index] = eeg_data.abs().max()
+            eeg_data = eeg_data / eeg_data.abs().max()
+            src_data = src_data / eeg_data.abs().max()
+
+        # Return transposed to match expected format (channels, time)
+        return eeg_data.transpose(0, 1), src_data.transpose(0, 1)

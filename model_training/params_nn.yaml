@@ -1,0 +1,66 @@
+# Neural Network Parameters for Evaluation
+# These parameters should match the trained models
+
+cnn1d:
+  train_simu_type: "sereega"
+  inter_layer: 512
+  kernel_size: 3
+  n_epochs: 100
+  batch_size: 32
+  dataset: "mes_debug_pythonfsav_994_"
+  exp: "default"
+  n_train_samples: 1000
+  loss: "mse"
+  norm: "linear"
+  n_electrodes: 75
+  n_sources: 994
+  hidden_size: 85
+  temporal_input_size: 500
+
+lstm:
+  train_simu_type: "sereega"
+  inter_layer: 512
+  kernel_size: 3
+  n_epochs: 100
+  batch_size: 32
+  dataset: "mes_debug_pythonfsav_994_"
+  exp: "default"
+  n_train_samples: 1000
+  loss: "mse"
+  norm: "linear"
+  n_electrodes: 75
+  n_sources: 994
+  hidden_size: 85
+  temporal_input_size: 500
+
+deep_sif:
+  train_simu_type: "sereega"
+  inter_layer: 512
+  kernel_size: 3
+  n_epochs: 100
+  batch_size: 32
+  dataset: "mes_debug_pythonfsav_994_"
+  exp: "default"
+  n_train_samples: 1000
+  loss: "mse"
+  norm: "linear"
+  n_electrodes: 75
+  n_sources: 994
+  hidden_size: 85
+  temporal_input_size: 500
+
+eeg_vit:
+  train_simu_type: "sereega"
+  inter_layer: 512
+  kernel_size: 3
+  n_epochs: 100
+  batch_size: 32
+  dataset: "mes_debug_pythonfsav_994_"
+  exp: "default"
+  n_train_samples: 1000
+  loss: "mse"
+  norm: "linear"
+  n_electrodes: 75
+  n_sources: 994
+  hidden_size: 85
+  temporal_input_size: 500

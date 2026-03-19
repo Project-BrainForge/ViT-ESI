@@ -28,7 +28,7 @@ from pytorch_lightning import seed_everything
 from scipy.io import loadmat
 from torch.utils.data import DataLoader, random_split
 
-from loaders import ModSpikeEEGBuild, EsiDatasetds_new
+from loaders import ModSpikeEEGBuild, EsiDatasetds_new, SimpleNMMDataset
 from load_data import HeadModel
 from load_data.FolderStructure import FolderStructure
 from utils import utl
@@ -390,12 +390,34 @@ simu_path = str(
 model_path = str(
     root_base / args.orientation / args.electrode_montage / args.source_space / "model"
 )
-config_file = f"{simu_path}/{args.simu_name}{args.source_space}_config.json"
-
-with open(config_file, "r") as f:
-    general_config_dict = json.load(f)
-general_config_dict["eeg_snr"] = args.eeg_snr
-general_config_dict["simu_name"] = args.simu_name
+# For nmm_simple, create a minimal config; otherwise load from file
+if args.eval_simu_type.upper() == "NMM":
+    # Create minimal config for simple NMM data
+    general_config_dict = {
+        "electrode_space": {
+            "n_electrodes": 75,
+            "electrode_montage": args.electrode_montage
+        },
+        "source_space": {
+            "n_sources": 994,
+            "constrained_orientation": True,
+            "src_sampling": args.source_space
+        },
+        "rec_info": {
+            "fs": 500,
+            "n_trials": 1,
+            "n_times": args.n_times,
+            "trial_ms_duree": 1000
+        },
+        "eeg_snr": args.eeg_snr,
+        "simu_name": args.simu_name
+    }
+else:
+    config_file = f"{simu_path}/{args.simu_name}{args.source_space}_config.json"
+    with open(config_file, "r") as f:
+        general_config_dict = json.load(f)
+    general_config_dict["eeg_snr"] = args.eeg_snr
+    general_config_dict["simu_name"] = args.simu_name
 
 folders = FolderStructure(str(root_base), general_config_dict)
 source_space = HeadModel.SourceSpace(folders, general_config_dict)
@@ -493,16 +515,33 @@ else:
 ####################################################################
 ## load dataset
 if args.eval_simu_type.upper() == "NMM":
-    spikes_data_path = f"{root_simu}/{args.orientation}/{args.electrode_montage}/{args.source_space}/simu/{args.spikes_folder}"
-    dataset_meta_path = f"{simu_path}/{args.simu_name}.mat"
+    # spikes_data_path = f"{root_simu}/{args.orientation}/{args.electrode_montage}/{args.source_space}/simu/{args.spikes_folder}"
+    # dataset_meta_path = f"{simu_path}/{args.simu_name}.mat"
 
-    ds_dataset = ModSpikeEEGBuild(
-        spike_data_path=spikes_data_path,
-        metadata_file=dataset_meta_path,
-        fwd=fwd,
-        n_times=args.n_times,
-        args_params={"dataset_len": args.to_load},
-        spos=source_space.positions,
+    # ds_dataset = ModSpikeEEGBuild(
+    #     spike_data_path=spikes_data_path,
+    #     metadata_file=dataset_meta_path,
+    #     fwd=fwd,
+    #     n_times=args.n_times,
+    #     args_params={"dataset_len": args.to_load},
+    #     spos=source_space.positions,
+    #     norm=args.scaler,
+    # )
+
+    # Use simple NMM dataset for pre-generated sample_XXXXX.mat files
+    # NMM data is at simulation/nmm_data, regardless of root_simu structure
+    if "fsaverage" in root_simu or "constrained" in root_simu:
+        # If root_simu points to fsaverage structure, go to parent simulation folder
+        nmm_data_path = os.path.join(os.path.dirname(root_simu), "nmm_data")
+    elif "nmm_data" in root_simu:
+        nmm_data_path = root_simu
+    else:
+        # Default: append nmm_data to root_simu
+        nmm_data_path = os.path.join(root_simu, "nmm_data")
+
+    ds_dataset = SimpleNMMDataset(
+        data_folder=nmm_data_path,
+        to_load=args.to_load,
         norm=args.scaler,
     )
 
@@ -517,7 +556,6 @@ elif args.eval_simu_type.upper() == "SEREEGA":
         args.eeg_snr,
         noise_type={"white": 1.0, "pink": 0.0},
     )
-
 else:
     sys.exit("unknown simulation type (argument simu_type)")
 
@@ -827,6 +865,8 @@ noise_only_eeg_data = []
 #################################
 if args.eval_simu_type.lower() == "sereega":
     md_keys = [k for k, _ in val_ds.dataset.md_dict.items()]
+elif args.eval_simu_type.lower() == "nmm":
+    md_keys = None  # Not needed for simple NMM data
 c = 0
 nf=0
 overlapping_regions = 0
@@ -871,6 +911,15 @@ for k in val_ds.indices:
         seeds = val_ds.dataset.md_dict[md_keys[k]]["seeds"]
         if type(seeds) is int:
             seeds = [seeds]
+    elif args.eval_simu_type.lower() == "nmm":
+        # For simple NMM data, labels are stored in each mat file
+        mat_path = os.path.join(val_ds.dataset.data_folder, val_ds.dataset.file_list[k])
+        data = loadmat(mat_path)
+        labels = data['labels'].flatten()
+        # Filter valid labels: > 0 and < n_sources (exclude padding values)
+        seeds = [int(l) for l in labels if 0 < l < n_sources]
+        if not seeds:
+            seeds = [0]
     else:
         seeds = list(val_ds.dataset.dataset_meta["selected_region"][k][:, 0])
         if type(seeds) is int:
@@ -968,6 +1017,15 @@ for k in val_ds.indices:
             seeds = val_ds.dataset.md_dict[md_keys[k]]["seeds"]
             if type(seeds) is int:
                 seeds = [seeds]
+        elif args.eval_simu_type.lower() == "nmm":
+            # For simple NMM data, labels are stored in each mat file
+            mat_path = os.path.join(val_ds.dataset.data_folder, val_ds.dataset.file_list[k])
+            data = loadmat(mat_path)
+            labels = data['labels'].flatten()
+            # Filter valid labels: > 0 and < n_sources (exclude padding values)
+            seeds = [int(l) for l in labels if 0 < l < n_sources]
+            if not seeds:
+                seeds = [0]
         else:
             seeds = list(val_ds.dataset.dataset_meta["selected_region"][k][:, 0])
             seeds = [s.astype(int) for s in seeds]
