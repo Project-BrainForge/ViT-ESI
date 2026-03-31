@@ -14,7 +14,7 @@ from pytorch_lightning.loggers import TensorBoardLogger, tensorboard
 
 from pytorch_lightning import seed_everything
 
-from loaders import ModSpikeEEGBuild, EsiDatasetds_new
+from loaders import ModSpikeEEGBuild, EsiDatasetds_new, SimpleNMMDataset
 from scipy.io import loadmat
 from utils.utl import CosineSimilarityLoss, logMSE
 from load_data.FolderStructure import FolderStructure
@@ -63,9 +63,13 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "-simu_type", type=str, help="type of simulation used (NMM or SEREEGA)"
+    "-simu_type", type=str, help="type of simulation used (NMM, SEREEGA, or SIMPLE_NMM)"
 )
 parser.add_argument("-spikes_folder", type=str, default="nmm_spikes_nov23", help="folder with spikes for NMM based simulations")
+parser.add_argument(
+    "-nmm_data_path", type=str, default=None,
+    help="path to simple NMM data folder (for SIMPLE_NMM type). If not set, assumes relative path: ../simulation/nmm_data"
+)
 
 parser.add_argument(
     "-n_times", type=int, default=500, help="number of time samples in the signal"
@@ -156,62 +160,62 @@ args = parser.parse_args()
 # ------ where to save results -------- #
 results_path = f"{args.results_path}/{args.simu_name}{args.source_space}_/{args.sfolder}"
 os.makedirs(f"{results_path}/{args.sfolder}", exist_ok=True)
-## -------------------------------------- LOAD DATA ----------------------------------------------- ##
-if args.simu_folder:
-    # Use simulation folder path directly: .../orientation/montage/source_space/simu/simu_name
-    simu_path = str(Path(args.simu_folder).resolve())
-    _p = Path(simu_path)
-    root_base = _p.parent.parent.parent.parent.parent  # simu_name -> simu -> source_space -> montage -> orientation -> root
-    model_path = str(_p.parent.parent / "model")  # source_space/model
-else:
-    if not args.root_simu:
-        parser.error("either -root_simu or -simu_folder must be provided")
-    root_simu = args.root_simu
-    root_simu_path = Path(root_simu)
-    # Support both layouts:
-    #   A) <root>/<ori>/<montage>/<src>/simu/<simu_name>
-    #   B) <root>/simulation/<subject>/<ori>/<montage>/<src>/simu/<simu_name>
-    if args.data_layout == "flat":
-        root_base = root_simu_path
-    elif args.data_layout == "simulation":
-        root_base = root_simu_path / "simulation" / args.subject_name
-    else:  # auto
-        if (root_simu_path / "simulation" / args.subject_name).is_dir():
-            root_base = root_simu_path / "simulation" / args.subject_name
-        else:
+
+## Check simulation type early to determine if we need folder structure
+is_simple_nmm = args.simu_type and args.simu_type.upper() == "SIMPLE_NMM"
+
+## -------------------------------------- LOAD DATA SETUP ----------------------------------------------- ##
+if not is_simple_nmm:
+    # Only needed for NMM and SEREEGA types
+    if args.simu_folder:
+        # Use simulation folder path directly: .../orientation/montage/source_space/simu/simu_name
+        simu_path = str(Path(args.simu_folder).resolve())
+        _p = Path(simu_path)
+        root_base = _p.parent.parent.parent.parent.parent  # simu_name -> simu -> source_space -> montage -> orientation -> root
+        model_path = str(_p.parent.parent / "model")  # source_space/model
+    else:
+        if not args.root_simu:
+            parser.error("either -root_simu or -simu_folder must be provided (not needed for SIMPLE_NMM)")
+        root_simu = args.root_simu
+        root_simu_path = Path(root_simu)
+        # Support both layouts:
+        #   A) <root>/<ori>/<montage>/<src>/simu/<simu_name>
+        #   B) <root>/simulation/<subject>/<ori>/<montage>/<src>/simu/<simu_name>
+        if args.data_layout == "flat":
             root_base = root_simu_path
+        elif args.data_layout == "simulation":
+            root_base = root_simu_path / "simulation" / args.subject_name
+        else:  # auto
+            if (root_simu_path / "simulation" / args.subject_name).is_dir():
+                root_base = root_simu_path / "simulation" / args.subject_name
+            else:
+                root_base = root_simu_path
 
-    simu_path = str(
-        root_base
-        / args.orientation
-        / args.electrode_montage
-        / args.source_space
-        / "simu"
-        / args.simu_name
-    )
-    model_path = str(
-        root_base / args.orientation / args.electrode_montage / args.source_space / "model"
-    )
+        simu_path = str(
+            root_base
+            / args.orientation
+            / args.electrode_montage
+            / args.source_space
+            / "simu"
+            / args.simu_name
+        )
+        model_path = str(
+            root_base / args.orientation / args.electrode_montage / args.source_space / "model"
+        )
 
-
-# config_file = f"{simu_path}/{args.simu_name}{args.source_space}_config.json"
-
-# with open(config_file, "r") as f:
-#     general_config_dict = json.load(f)
-
-general_config_dict = {
-    "eeg_snr": args.eeg_snr,
-    "simu_name": args.simu_name,
-    "source_space": {
-        "constrained_orientation": args.orientation == "constrained",
-        "src_sampling": args.source_space,
-    },
-    "electrode_space": {
-        "electrode_montage": args.electrode_montage,
-    },
-}
-folders = FolderStructure(str(root_base), general_config_dict)
-source_space_obj = HeadModel.SourceSpace(folders, general_config_dict)
+    general_config_dict = {
+        "eeg_snr": args.eeg_snr,
+        "simu_name": args.simu_name,
+        "source_space": {
+            "constrained_orientation": args.orientation == "constrained",
+            "src_sampling": args.source_space,
+        },
+        "electrode_space": {
+            "electrode_montage": args.electrode_montage,
+        },
+    }
+    folders = FolderStructure(str(root_base), general_config_dict)
+    source_space_obj = HeadModel.SourceSpace(folders, general_config_dict)
 
 def _load_leadfield_mat(mat_path: str):
     m = loadmat(mat_path)
@@ -227,28 +231,58 @@ def _load_leadfield_mat(mat_path: str):
     raise KeyError(f"No leadfield matrix found in {mat_path}. Keys={list(m.keys())}")
 
 
-# --------------------------- Leadfield loading --------------------------- #
-repo_root = Path(__file__).resolve().parents[1]
-repo_default_fsav994_lf = repo_root / "anatomy" / "leadfield_75_20k.mat"
+# --------------------------- Leadfield loading (only for NMM/SEREEGA) --------------------------- #
+if not is_simple_nmm:
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_default_fsav994_lf = repo_root / "anatomy" / "leadfield_75_20k.mat"
 
-if args.leadfield_mat:
-    fwd = _load_leadfield_mat(args.leadfield_mat)
-elif args.source_space == "fsav_994" and os.path.isfile(f"{model_path}/LF_fsav_994.mat"):
-    fwd = loadmat(f"{model_path}/LF_fsav_994.mat")["G"]
-elif args.source_space == "fsav_994" and repo_default_fsav994_lf.is_file():
-    # Common lightweight setup: use the repo-provided 75x994 leadfield without requiring a full model folder.
-    fwd = _load_leadfield_mat(str(repo_default_fsav994_lf))
+    if args.leadfield_mat:
+        fwd = _load_leadfield_mat(args.leadfield_mat)
+    elif args.source_space == "fsav_994" and os.path.isfile(f"{model_path}/LF_fsav_994.mat"):
+        fwd = loadmat(f"{model_path}/LF_fsav_994.mat")["G"]
+    elif args.source_space == "fsav_994" and repo_default_fsav994_lf.is_file():
+        # Common lightweight setup: use the repo-provided 75x994 leadfield without requiring a full model folder.
+        fwd = _load_leadfield_mat(str(repo_default_fsav994_lf))
+    else:
+        electrode_space_obj = HeadModel.ElectrodeSpace(folders, general_config_dict)
+        head_model = HeadModel.HeadModel(
+            electrode_space_obj, source_space_obj, folders, subject_name=args.subject_name
+        )
+        fwd = head_model.fwd["sol"]["data"]
+
+    print("fwd.shape:", fwd.shape)
 else:
-    electrode_space_obj = HeadModel.ElectrodeSpace(folders, general_config_dict)
-    head_model = HeadModel.HeadModel(
-        electrode_space_obj, source_space_obj, folders, subject_name=args.subject_name
-    )
-    fwd = head_model.fwd["sol"]["data"]
-
-print("fwd.shape:", fwd.shape)
+    fwd = None
+    print("ℹ️  SIMPLE_NMM: no leadfield needed")
 
 ############################### LOAD DATA ################################
-if args.simu_type.upper() == "NMM":
+if args.simu_type.upper() == "SIMPLE_NMM":
+    # Simple NMM data from sample_XXXXX.mat files
+    print("📂 Loading SIMPLE_NMM data...")
+
+    # Determine data path
+    if args.nmm_data_path:
+        nmm_data_path = args.nmm_data_path
+    else:
+        nmm_data_path = str(Path(__file__).parent.parent / "simulation" / "nmm_data")
+
+    print(f"   Data path: {nmm_data_path}")
+
+    ds_dataset = SimpleNMMDataset(
+        data_folder=nmm_data_path,
+        to_load=args.to_load,
+        norm=args.scaler,
+    )
+
+    print(f"✅ Dataset loaded: {len(ds_dataset)} samples")
+
+    # Get dimensions from first batch
+    sample_eeg, sample_src = ds_dataset[0]
+    n_electrodes = sample_eeg.shape[0]
+    n_sources = sample_src.shape[0]
+    print(f"   EEG shape: {sample_eeg.shape}, Sources shape: {sample_src.shape}")
+
+elif args.simu_type.upper() == "NMM":
     if args.source_space != "fsav_994":
         sys.exit(
             "NMM spike simulations require the 994-region source space. "
@@ -270,7 +304,7 @@ if args.simu_type.upper() == "NMM":
 elif args.simu_type.upper() == "SEREEGA":
     # simu_data_path = f"{home}/Documents/Data/simulation"
     # config_file = f"{simu_data_path}/{args.simu_name}{args.source_space}_config.json"
-    
+
     config_file = f"{simu_path}/{args.simu_name}{args.source_space}_config.json"
 
     ds_dataset = EsiDatasetds_new(
@@ -286,7 +320,7 @@ elif args.simu_type.upper() == "SEREEGA":
     )
 
 else:
-    sys.exit("unknown simulation type (argument simu_type)")
+    sys.exit("unknown simulation type (argument simu_type). Use: NMM, SEREEGA, or SIMPLE_NMM")
 
 
 effective_len = len(ds_dataset)
@@ -298,8 +332,13 @@ train_ds, val_ds = random_split(ds_dataset, [n_train, n_val])
 train_dataloader = DataLoader(dataset=train_ds, batch_size=args.bs, shuffle=True)
 val_dataloader = DataLoader(dataset=val_ds, batch_size=args.bs, shuffle=False)
 
-n_electrodes = fwd.shape[0]
-n_sources = fwd.shape[1]
+# Get dimensions
+if is_simple_nmm:
+    # Already set above, no leadfield needed
+    pass
+else:
+    n_electrodes = fwd.shape[0]
+    n_sources = fwd.shape[1]
 
 ## ------------------------------------------- NETWORK TO LOAD --------------------------##
 # loss function
