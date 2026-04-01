@@ -740,8 +740,9 @@ class SimpleNMMDataset(Dataset):
         self.data_folder = data_folder
         self.norm = norm
 
-        # Get all sample files
-        all_files = sorted([f for f in os.listdir(data_folder) if f.endswith('.mat')])
+        # Get all sample files (exclude metadata files)
+        all_files = sorted([f for f in os.listdir(data_folder) 
+                           if f.endswith('.mat') and f.startswith('sample_')])
 
         # Limit number of files to load if specified
         if to_load is not None:
