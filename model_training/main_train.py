@@ -298,8 +298,12 @@ train_ds, val_ds = random_split(ds_dataset, [n_train, n_val])
 train_dataloader = DataLoader(dataset=train_ds, batch_size=args.bs, shuffle=True)
 val_dataloader = DataLoader(dataset=val_ds, batch_size=args.bs, shuffle=False)
 
-n_electrodes = fwd.shape[0]
-n_sources = fwd.shape[1]
+# Get dimensions from actual dataset to match the electrode montage used
+sample_eeg, sample_src = ds_dataset[0]
+n_electrodes = sample_eeg.shape[0]  # Number of EEG channels in the dataset
+n_sources = sample_src.shape[0]      # Number of source regions in the dataset
+
+print(f"Dataset dimensions: {n_electrodes} electrodes, {n_sources} sources")
 
 ## ------------------------------------------- NETWORK TO LOAD --------------------------##
 # loss function
