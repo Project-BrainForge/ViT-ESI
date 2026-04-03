@@ -164,7 +164,7 @@ class EsiDatasetds_new(Dataset):
             
         # save as mat file with index as the file name 
         # need only one mat with bot eeg anfd source data
-        #savemat(f"eeg_and_src_data_{index}.mat", {"eeg_data": eeg_data, "src_data": src_data})
+        savemat(f"eeg_and_src_data_{index}.mat", {"eeg_data": eeg_data, "src_data": src_data})
 
         return eeg_data, src_data
 
