@@ -278,7 +278,7 @@ elif args.simu_type.upper() == "SEREEGA":
         config_file,
         args.simu_name,
         args.source_space,
-        "standard_1020",
+        args.electrode_montage,
         args.to_load,
         args.eeg_snr,
         noise_type={"white": 1.0, "pink": 0.0},
