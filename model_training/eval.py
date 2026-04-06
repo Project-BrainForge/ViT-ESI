@@ -88,6 +88,15 @@ parser.add_argument(
     default=None,
     help="Optional path to a .mat leadfield to use for evaluation (e.g. anatomy/leadfield_75_20k.mat).",
 )
+parser.add_argument(
+    "-model_folder",
+    type=str,
+    default=None,
+    help=(
+        "Optional full path to the model folder containing .mat files (e.g., leadfield, neighbors). "
+        "When set, this path is used directly and the model path from folder structure is ignored."
+    ),
+)
 
 parser.add_argument("-spikes_folder", type=str, default="nmm_spikes_nov23", help="folder with spikes for NMM based simulations")
 parser.add_argument(
@@ -448,6 +457,10 @@ else:
     model_path = str(
         root_base / args.orientation / args.electrode_montage / args.source_space / "model"
     )
+
+# Override model_path if -model_folder is provided
+if args.model_folder:
+    model_path = str(Path(args.model_folder).resolve())
 config_file = f"{simu_path}/{args.simu_name}{args.source_space}_config.json"
 
 with open(config_file, "r") as f:
@@ -455,7 +468,11 @@ with open(config_file, "r") as f:
 general_config_dict["eeg_snr"] = args.eeg_snr
 general_config_dict["simu_name"] = args.simu_name
 
+# If model_folder is given, override folders.model_folder after creating FolderStructure
 folders = FolderStructure(str(root_base), general_config_dict)
+if args.model_folder:
+    folders.model_folder = str(Path(args.model_folder).resolve())
+
 source_space = HeadModel.SourceSpace(folders, general_config_dict)
 electrode_space = HeadModel.ElectrodeSpace(folders, general_config_dict)
 head_model = HeadModel.HeadModel(electrode_space, source_space, folders, "fsaverage")

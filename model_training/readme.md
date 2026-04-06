@@ -132,9 +132,10 @@ Evaluates trained models and (optionally) linear methods (MNE, sLORETA) on the s
 ### Important arguments
 
 - `simu_name`, `-root_simu`, `-results_path`, `-eval_simu_type`, `-source_space`, `-electrode_montage`, `-orientation`, `-leadfield_mat`: same as training.
+- **`-simu_folder`**: Optional; full path to the simulation folder (same as in training).
+- **`-model_folder`**: Optional direct path to the model folder containing `.mat` files (leadfield, neighbors, etc.). Bypasses automatic path construction.
 - **`-train_run_dir`**: Path to the **run directory** that contains `trained_models/<MODEL>_model.pt`. If set, the script loads the NN from this folder instead of inferring from other training args.
 - **`-model_path`**: Optional direct checkpoint path for one NN method in `-mets` (e.g. a specific `DEEPSIF_model.pt`).
-- **`-simu_folder`**: Optional; full path to the simulation folder (same as in training).
 - **`-eval_split`**: Which loaded subset to evaluate: `val` (default, controlled by `-per_valid`) or `all` (evaluate every loaded sample).
 - **`-mets` / `-methods`**: Methods to run, e.g. `eeg_vit` (ViT-ESI), `cnn_1d`, `lstm`, `deep_sif`, `MNE`, `sLORETA`.
 
