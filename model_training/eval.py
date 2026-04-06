@@ -1,4 +1,4 @@
-"""
+﻿"""
 2023-08-25 script to evaluate results
 modification august 2023 - to use with deepsif datasets (neural mass model based and sereega based)
 """
@@ -26,7 +26,7 @@ import json
 import pandas as pd
 from pytorch_lightning import seed_everything
 from scipy.io import loadmat
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 
 from loaders import ModSpikeEEGBuild, EsiDatasetds_new
 from load_data import HeadModel
@@ -53,7 +53,22 @@ save_suffix = "test"
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 #argument to load the data
 parser.add_argument("simu_name", type=str, help="name of the simulation")
-parser.add_argument("-root_simu", type=str, required=True, help="Simulation folder (parent folder in the folder tree containing the simulations)")
+parser.add_argument(
+    "-root_simu",
+    type=str,
+    default=None,
+    help="Simulation root folder (required if -simu_folder is not set)",
+)
+parser.add_argument(
+    "-simu_folder",
+    type=str,
+    default=None,
+    help=(
+        "Optional full path to the simulation folder to evaluate "
+        "(.../<orientation>/<montage>/<source_space>/simu/<simu_name>). "
+        "When set, this path is used directly and -root_simu is ignored for data loading."
+    ),
+)
 parser.add_argument("-results_path", type=str, required=True, help="Path to where to save results")
 parser.add_argument(
     "-eval_simu_type", type=str, help="type of simulation used (NMM or SEREEGA)"
@@ -89,6 +104,17 @@ parser.add_argument(
     default=0.2,
     type=float,
     help="fraction of the dataset to use for validation",
+)
+parser.add_argument(
+    "-eval_split",
+    type=str,
+    default="val",
+    choices=["val", "all"],
+    help=(
+        "Which subset of the loaded dataset to evaluate: "
+        "'val' uses the validation split controlled by -per_valid (default), "
+        "'all' evaluates all loaded samples."
+    ),
 )
 parser.add_argument(
     "-eeg_snr",
@@ -150,6 +176,15 @@ parser.add_argument(
     help=(
         "Override model weights with explicit checkpoints."
         " Format: METHOD:/abs/path/to/checkpoint (repeat flag per method)."
+    ),
+)
+parser.add_argument(
+    "-model_path",
+    type=str,
+    default=None,
+    help=(
+        "Optional direct path to a single NN model checkpoint (.pt/.ckpt). "
+        "Use when evaluating exactly one NN method in -mets."
     ),
 )
 parser.add_argument(
@@ -352,6 +387,21 @@ except ValueError as exc:
     parser.error(str(exc))
 methods_requested = _normalize_methods(args.methods)
 
+if args.model_path:
+    nn_requested = [m for m in methods_requested if m in nn_methods]
+    if len(nn_requested) != 1:
+        parser.error(
+            "-model_path requires exactly one NN method in -mets "
+            "(choose one of: cnn_1d, lstm, deep_sif, eeg_vit)."
+        )
+    target_method = nn_requested[0]
+    if target_method in ckpt_overrides:
+        parser.error(
+            f"Both -model_path and -ckpt_path were provided for method '{target_method}'. "
+            "Use only one override mechanism."
+        )
+    ckpt_overrides[target_method] = os.path.expanduser(args.model_path)
+
 # Only linear inverse methods require `mne`
 USE_MNE_LINEAR = HAS_MNE and any(m in linear_methods for m in methods_requested)
 if any(m in linear_methods for m in methods_requested) and not HAS_MNE:
@@ -373,23 +423,31 @@ eval_results_path = f"{results_path}/{dataset}/eval/{args.sfolder}"
 os.makedirs(eval_results_path, exist_ok=True)
 
 ##----------------LOAD EVAL DATA---------------------##
-root_simu_path = Path(root_simu)
-if (root_simu_path / "simulation" / args.subject_name).is_dir():
-    root_base = root_simu_path / "simulation" / args.subject_name
+if args.simu_folder:
+    simu_path = str(Path(args.simu_folder).resolve())
+    _p = Path(simu_path)
+    root_base = _p.parent.parent.parent.parent.parent
+    model_path = str(_p.parent.parent / "model")
 else:
-    root_base = root_simu_path
+    if not root_simu:
+        parser.error("either -root_simu or -simu_folder must be provided")
+    root_simu_path = Path(root_simu)
+    if (root_simu_path / "simulation" / args.subject_name).is_dir():
+        root_base = root_simu_path / "simulation" / args.subject_name
+    else:
+        root_base = root_simu_path
 
-simu_path = str(
-    root_base
-    / args.orientation
-    / args.electrode_montage
-    / args.source_space
-    / "simu"
-    / args.simu_name
-)
-model_path = str(
-    root_base / args.orientation / args.electrode_montage / args.source_space / "model"
-)
+    simu_path = str(
+        root_base
+        / args.orientation
+        / args.electrode_montage
+        / args.source_space
+        / "simu"
+        / args.simu_name
+    )
+    model_path = str(
+        root_base / args.orientation / args.electrode_montage / args.source_space / "model"
+    )
 config_file = f"{simu_path}/{args.simu_name}{args.source_space}_config.json"
 
 with open(config_file, "r") as f:
@@ -493,7 +551,7 @@ else:
 ####################################################################
 ## load dataset
 if args.eval_simu_type.upper() == "NMM":
-    spikes_data_path = f"{root_simu}/{args.orientation}/{args.electrode_montage}/{args.source_space}/simu/{args.spikes_folder}"
+    spikes_data_path = f"{str(root_base)}/{args.orientation}/{args.electrode_montage}/{args.source_space}/simu/{args.spikes_folder}"
     dataset_meta_path = f"{simu_path}/{args.simu_name}.mat"
 
     ds_dataset = ModSpikeEEGBuild(
@@ -508,7 +566,7 @@ if args.eval_simu_type.upper() == "NMM":
 
 elif args.eval_simu_type.upper() == "SEREEGA":
     ds_dataset = EsiDatasetds_new(
-        root_simu,
+        str(root_base),
         config_file,
         args.simu_name,
         args.source_space,
@@ -524,7 +582,17 @@ else:
 n_electrodes = fwd.shape[0]
 n_sources = fwd.shape[1]
 # split dataset
-_, val_ds = random_split(ds_dataset, [1 - args.per_valid, args.per_valid])
+if args.eval_split == "all":
+    val_ds = Subset(ds_dataset, list(range(len(ds_dataset))))
+else:
+    effective_len = len(ds_dataset)
+    if effective_len <= 0:
+        sys.exit("Dataset is empty (no samples found). Check your simulation folder and match files.")
+    n_val = int(round(effective_len * args.per_valid))
+    n_val = max(1, min(effective_len, n_val))
+    n_train = effective_len - n_val
+    _, val_ds = random_split(ds_dataset, [n_train, n_val])
+
 val_dataloader = DataLoader(dataset=val_ds, batch_size=1, shuffle=False)
 n_val_samples = len(val_dataloader)
 print(f">>>>>>>>>>>> Evaluation on {n_val_samples} samples <<<<<<<<<<<<<<<<<")
@@ -866,7 +934,7 @@ for k in val_ds.indices:
         noise_cov = None
         eeg = None
 
-    ## ici il y a un distinction à faire selon les jeux de données
+    ## ici il y a un distinction ├á faire selon les jeux de donn├⌐es
     if args.eval_simu_type.lower() == "sereega":
         seeds = val_ds.dataset.md_dict[md_keys[k]]["seeds"]
         if type(seeds) is int:
@@ -877,7 +945,7 @@ for k in val_ds.indices:
             seeds = [seeds]
 
         # stc_gt = mne.SourceEstimate(
-        #    data=j_unscaled_vertices, # 256//2 = instant du pic à visualiser @TODO : change le codage en dur
+        #    data=j_unscaled_vertices, # 256//2 = instant du pic ├á visualiser @TODO : change le codage en dur
         #    vertices= [ fwd_vertices['src'][0]['vertno'], fwd_vertices['src'][1]['vertno'] ],
         #    tmin=0.,
         #    tstep=1/fs,

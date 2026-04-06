@@ -133,7 +133,9 @@ Evaluates trained models and (optionally) linear methods (MNE, sLORETA) on the s
 
 - `simu_name`, `-root_simu`, `-results_path`, `-eval_simu_type`, `-source_space`, `-electrode_montage`, `-orientation`, `-leadfield_mat`: same as training.
 - **`-train_run_dir`**: Path to the **run directory** that contains `trained_models/<MODEL>_model.pt`. If set, the script loads the NN from this folder instead of inferring from other training args.
+- **`-model_path`**: Optional direct checkpoint path for one NN method in `-mets` (e.g. a specific `DEEPSIF_model.pt`).
 - **`-simu_folder`**: Optional; full path to the simulation folder (same as in training).
+- **`-eval_split`**: Which loaded subset to evaluate: `val` (default, controlled by `-per_valid`) or `all` (evaluate every loaded sample).
 - **`-mets` / `-methods`**: Methods to run, e.g. `eeg_vit` (ViT-ESI), `cnn_1d`, `lstm`, `deep_sif`, `MNE`, `sLORETA`.
 
 ### Example (ViT-ESI from a specific run)
@@ -142,6 +144,9 @@ After training, you get a run directory like:
 `results/mes_debug_pythonfsav_994_/trainings/simu_sereega_srcspace_fsav_994_model_VIT_trainset_80_epochs_25_loss_cosine_norm_linear/`
 
 ```bash
+source .venv/bin/activate
+export PROJECT_ROOT="/mnt/e/BrainForge/ViT/ViT-ESI"
+cd model_training/
 python eval.py mes_debug_python \
   -root_simu "$PROJECT_ROOT" \
   -results_path "$PROJECT_ROOT/model_training/results" \
@@ -152,6 +157,17 @@ python eval.py mes_debug_python \
   -leadfield_mat "$PROJECT_ROOT/anatomy/leadfield_75_20k.mat" \
   -train_run_dir "$PROJECT_ROOT/model_training/results/mes_debug_pythonfsav_994_/trainings/simu_sereega_srcspace_fsav_994_model_VIT_trainset_80_epochs_25_loss_cosine_norm_linear" \
   -mets eeg_vit
+
+python eval.py mes_debug_python \
+  -results_path "$PROJECT_ROOT/model_training/results/deepsif/1000" \
+  -eval_simu_type sereega \
+  -source_space fsav_994 \
+  -electrode_montage standard_1020 \
+  -orientation constrained \
+  -leadfield_mat "$PROJECT_ROOT/anatomy/leadfield_75_20k.mat" \
+  -simu_folder "$PROJECT_ROOT/simulation/fsaverage/constrained/standard_1020/fsav_994/simu/mes_debug_python" \
+  -model_path "$PROJECT_ROOT/model_training/results/mes_debug_pythonfsav_994_/trainings/simu_sereega_srcspace_fsav_994_model_DEEPSIF_trainset_80_epochs_25_loss_cosine_norm_linear/trained_models/DEEPSIF_model.pt" \
+  -mets deep_sif -to_load 2000 -eval_split all
 ```
 
 Use `-mets MNE sLORETA eeg_vit` to compare linear methods and ViT-ESI.
