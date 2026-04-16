@@ -17,3 +17,5 @@ model_training/trained_models/
 
 
 model_training/training_times.txt   
+real_data_evaluation/results
+real_data_evaluation/each model inferences
